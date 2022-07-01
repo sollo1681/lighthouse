@@ -8,7 +8,7 @@ import puppeteer from 'puppeteer';
 
 import reportGenerator from '../../generator/report-generator.js';
 import axeLib from '../../../lighthouse-core/lib/axe.js';
-import {readJson} from '../../../root.js';
+import {readJson} from '../../../lighthouse-core/test/test-utils.js';
 
 const sampleResults = readJson('../../../lighthouse-core/test/results/sample_v2.json', import.meta);
 
@@ -16,14 +16,16 @@ describe('ReportRendererAxe', () => {
   describe('with aXe', () => {
     let browser;
 
-    beforeAll(async () => {
+    before(async () => {
       browser = await puppeteer.launch();
     });
 
-    afterAll(async () => {
+    after(async () => {
       await browser.close();
     });
 
+    // This test takes 10s on fast hardware, but can take longer in CI.
+    // https://github.com/dequelabs/axe-core/tree/b573b1c1/doc/examples/jest_react#timeout-issues
     it('renders without axe violations', async () => {
       const page = await browser.newPage();
       const htmlReport = reportGenerator.generateReportHtml(sampleResults);
@@ -78,10 +80,6 @@ describe('ReportRendererAxe', () => {
         };
       });
       expect(axeSummary).toMatchSnapshot();
-    },
-    // This test takes 10s on fast hardware, but can take longer in CI.
-    // https://github.com/dequelabs/axe-core/tree/b573b1c1/doc/examples/jest_react#timeout-issues
-    /* timeout= */ 20_000
-    );
+    });
   });
 });

@@ -90,7 +90,7 @@ class GatherRunner {
         passContext.LighthouseRunWarnings.push(...warnings);
       }
     } catch (err) {
-      // If it's one of our loading-based LHErrors, we'll treat it as a page load error.
+      // If it's one of our loading-based LighthouseErrors, we'll treat it as a page load error.
       if (err.code === 'NO_FCP' || err.code === 'PAGE_HUNG') {
         return {navigationError: err};
       }
@@ -604,6 +604,7 @@ class GatherRunner {
       url: passContext.url,
       loadFailureMode: passConfig.loadFailureMode,
       networkRecords: loadData.networkRecords,
+      warnings: passContext.LighthouseRunWarnings,
     });
     if (pageLoadError) {
       const localizedMessage = format.getFormatted(pageLoadError.friendlyMessage,

@@ -9,7 +9,8 @@ import {strict as assert} from 'assert';
 import path from 'path';
 import {createRequire} from 'module';
 
-import {jest} from '@jest/globals';
+import jestMock from 'jest-mock';
+import * as td from 'testdouble';
 
 // import Runner from '../runner.js';
 // import GatherRunner from '../gather/gather-runner.js';
@@ -18,9 +19,9 @@ import driverMock from './gather/fake-driver.js';
 import Audit from '../audits/audit.js';
 import Gatherer from '../gather/gatherers/gatherer.js';
 import assetSaver from '../lib/asset-saver.js';
-import LHError from '../lib/lh-error.js';
+import LighthouseError from '../lib/lh-error.js';
 import i18n from '../lib/i18n/i18n.js';
-import {makeMocksForGatherRunner} from './test-utils.js';
+import {importMock, makeMocksForGatherRunner} from './test-utils.js';
 import {getModuleDirectory, getModulePath} from '../../esm-utils.mjs';
 
 const require = createRequire(import.meta.url);
@@ -37,7 +38,7 @@ let GatherRunner;
 /** @type {typeof import('../config/config.js')} */
 let Config;
 
-beforeAll(async () => {
+before(async () => {
   Runner = (await import('../runner.js')).default;
   GatherRunner = (await import('../gather/gather-runner.js')).default;
   Config = (await import('../config/config.js')).default;
@@ -45,10 +46,10 @@ beforeAll(async () => {
 
 makeMocksForGatherRunner();
 
-jest.mock('../gather/driver/service-workers.js', () => ({
-  getServiceWorkerVersions: jest.fn().mockResolvedValue({versions: []}),
-  getServiceWorkerRegistrations: jest.fn().mockResolvedValue({registrations: []}),
-}));
+td.replace('../gather/driver/service-workers.js', {
+  getServiceWorkerVersions: jestMock.fn().mockResolvedValue({versions: []}),
+  getServiceWorkerRegistrations: jestMock.fn().mockResolvedValue({registrations: []}),
+});
 
 describe('Runner', () => {
   const createGatherFn = url => {
@@ -66,23 +67,23 @@ describe('Runner', () => {
     return Runner.audit(artifacts, opts);
   };
 
-  /** @type {jest.Mock} */
+  /** @type {jestMock} */
   let saveArtifactsSpy;
-  /** @type {jest.Mock} */
+  /** @type {jestMock} */
   let saveLhrSpy;
-  /** @type {jest.Mock} */
+  /** @type {jestMock} */
   let loadArtifactsSpy;
-  /** @type {jest.Mock} */
+  /** @type {jestMock} */
   let gatherRunnerRunSpy;
-  /** @type {jest.Mock} */
+  /** @type {jestMock} */
   let runAuditSpy;
 
   beforeEach(() => {
-    saveArtifactsSpy = jest.spyOn(assetSaver, 'saveArtifacts');
-    saveLhrSpy = jest.spyOn(assetSaver, 'saveLhr').mockImplementation(() => {});
-    loadArtifactsSpy = jest.spyOn(assetSaver, 'loadArtifacts');
-    gatherRunnerRunSpy = jest.spyOn(GatherRunner, 'run');
-    runAuditSpy = jest.spyOn(Runner, '_runAudit');
+    saveArtifactsSpy = jestMock.spyOn(assetSaver, 'saveArtifacts');
+    saveLhrSpy = jestMock.spyOn(assetSaver, 'saveLhr').mockImplementation(() => {});
+    loadArtifactsSpy = jestMock.spyOn(assetSaver, 'loadArtifacts');
+    gatherRunnerRunSpy = jestMock.spyOn(GatherRunner, 'run');
+    runAuditSpy = jestMock.spyOn(Runner, '_runAudit');
   });
 
   afterEach(() => {
@@ -113,7 +114,7 @@ describe('Runner', () => {
     const artifactsPath = '.tmp/test_artifacts';
     const resolvedPath = path.resolve(process.cwd(), artifactsPath);
 
-    afterAll(() => {
+    after(() => {
       fs.rmSync(resolvedPath, {recursive: true, force: true});
     });
 
@@ -207,7 +208,8 @@ describe('Runner', () => {
         afterPass(passContext) {
           const warning = str_(i18n.UIStrings.displayValueByteSavings, {wastedBytes: 2222});
           passContext.LighthouseRunWarnings.push(warning);
-          throw new LHError(LHError.errors.UNSUPPORTED_OLD_CHROME, {featureName: 'VRML'});
+          throw new LighthouseError(
+            LighthouseError.errors.UNSUPPORTED_OLD_CHROME, {featureName: 'VRML'});
         }
       }
       const gatherConfig = await Config.fromJson({
@@ -221,7 +223,7 @@ describe('Runner', () => {
       expect(artifacts.LighthouseRunWarnings[0]).not.toBe('string');
       expect(artifacts.LighthouseRunWarnings[0]).toBeDisplayString('Potential savings of 2 KiB');
       expect(artifacts.WarningAndErrorGatherer).toMatchObject({
-        name: 'LHError',
+        name: 'LighthouseError',
         code: 'UNSUPPORTED_OLD_CHROME',
         // eslint-disable-next-line max-len
         friendlyMessage: expect.toBeDisplayString(`This version of Chrome is too old to support 'VRML'. Use a newer version to see full results.`),
@@ -503,7 +505,7 @@ describe('Runner', () => {
         }
       }
 
-      const auditMockFn = SimpleAudit.audit = jest.fn().mockReturnValue({score: 1});
+      const auditMockFn = SimpleAudit.audit = jestMock.fn().mockReturnValue({score: 1});
       const config = await Config.fromJson({
         settings: {
           auditMode: moduleDir + '/fixtures/artifacts/alphabet-artifacts/',
@@ -536,7 +538,7 @@ describe('Runner', () => {
         }
       }
 
-      const auditMockFn = SimpleAudit.audit = jest.fn().mockReturnValue({score: 1});
+      const auditMockFn = SimpleAudit.audit = jestMock.fn().mockReturnValue({score: 1});
       const config = await Config.fromJson({
         settings: {
           auditMode: moduleDir + '/fixtures/artifacts/alphabet-artifacts/',
@@ -686,7 +688,7 @@ describe('Runner', () => {
       const AuditClass = require(auditPath);
       assert.strictEqual(AuditClass.meta.id, auditExpectedName);
     });
-  });
+  }).timeout(40_000);
 
   it('results include artifacts when given artifacts and audits', async () => {
     const config = await Config.fromJson({
@@ -773,15 +775,15 @@ describe('Runner', () => {
   });
 
   describe('lhr.runtimeError', () => {
-    const NO_FCP = LHError.errors.NO_FCP;
+    const NO_FCP = LighthouseError.errors.NO_FCP;
     class RuntimeErrorGatherer extends Gatherer {
       afterPass() {
-        throw new LHError(NO_FCP);
+        throw new LighthouseError(NO_FCP);
       }
     }
     class RuntimeError2Gatherer extends Gatherer {
       afterPass() {
-        throw new LHError(LHError.errors.NO_SCREENSHOTS);
+        throw new LighthouseError(LighthouseError.errors.NO_SCREENSHOTS);
       }
     }
     class WarningAudit extends Audit {
@@ -828,14 +830,14 @@ describe('Runner', () => {
         // Loads the page successfully in the first pass, fails with PAGE_HUNG in the second.
       });
 
-      const gotoURL = jest.requireMock('../gather/driver/navigation.js').gotoURL;
+      const {gotoURL} = (await importMock('../gather/driver/navigation.js', import.meta)).default;
       gotoURL.mockImplementation((_, url) => {
         if (url.includes('blank')) return {mainDocumentUrl: '', warnings: []};
         if (firstLoad) {
           firstLoad = false;
           return {mainDocumentUrl: url, warnings: []};
         } else {
-          throw new LHError(LHError.errors.PAGE_HUNG);
+          throw new LighthouseError(LighthouseError.errors.PAGE_HUNG);
         }
       });
 
@@ -850,7 +852,7 @@ describe('Runner', () => {
       expect(lhr.audits['test-audit'].errorMessage).toEqual(expect.stringContaining(NO_FCP.code));
 
       // But top-level runtimeError is the pageLoadError.
-      expect(lhr.runtimeError.code).toEqual(LHError.errors.PAGE_HUNG.code);
+      expect(lhr.runtimeError.code).toEqual(LighthouseError.errors.PAGE_HUNG.code);
       expect(lhr.runtimeError.message).toMatch(/because the page stopped responding/);
     });
   });
@@ -858,8 +860,8 @@ describe('Runner', () => {
   it('localized errors thrown from driver', async () => {
     const erroringDriver = {...driverMock,
       async connect() {
-        const err = new LHError(
-          LHError.errors.PROTOCOL_TIMEOUT,
+        const err = new LighthouseError(
+          LighthouseError.errors.PROTOCOL_TIMEOUT,
           {protocolMethod: 'Method.Failure'}
         );
         throw err;
@@ -870,7 +872,7 @@ describe('Runner', () => {
       await runGatherAndAudit(createGatherFn('https://example.com/'), {driverMock: erroringDriver, config: await Config.fromJson()});
       assert.fail('should have thrown');
     } catch (err) {
-      assert.equal(err.code, LHError.errors.PROTOCOL_TIMEOUT.code);
+      assert.equal(err.code, LighthouseError.errors.PROTOCOL_TIMEOUT.code);
       assert.ok(/^Waiting for DevTools protocol.*Method: Method.Failure/.test(err.friendlyMessage),
         'did not localize error message');
     }

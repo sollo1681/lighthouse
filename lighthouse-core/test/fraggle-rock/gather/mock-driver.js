@@ -4,12 +4,12 @@
  * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
  */
 
-
 /**
  * @fileoverview Mock fraggle rock driver for testing.
  */
 
-import {jest} from '@jest/globals';
+import jestMock from 'jest-mock';
+import * as td from 'testdouble';
 
 import {
   createMockOnFn,
@@ -43,10 +43,14 @@ function createMockSession() {
   };
 }
 
-function createMockCdpSession() {
+/**
+ * @param {string} sessionId
+ */
+function createMockCdpSession(sessionId = 'DEFAULT_ID') {
   const connection = createMockCdpConnection();
 
   return {
+    id: () => sessionId,
     send: createMockSendCommandFn({useSessionId: false}),
     once: createMockOnceFn(),
     on: createMockOnFn(),
@@ -128,26 +132,15 @@ function createMockExecutionContext() {
   };
 }
 
-function createMockTargetManager() {
+/** @param {ReturnType<typeof createMockSession>} session */
+function createMockTargetManager(session) {
   return {
+    rootSession: () => session,
     enable: fnAny(),
     disable: fnAny(),
-    addTargetAttachedListener: createMockOnFn(),
-    removeTargetAttachedListener: fnAny(),
-    /** @param {LH.Gatherer.FRProtocolSession} session */
-    mockEnable(session) {
-      this.enable.mockImplementation(async () => {
-        const listeners = this.addTargetAttachedListener.mock.calls.map(call => call[0]);
-        const targetWithSession = {target: {type: 'page', targetId: 'page'}, session};
-        for (const listener of listeners) await listener(targetWithSession);
-      });
-    },
-    reset() {
-      this.enable = fnAny();
-      this.disable = fnAny();
-      this.addTargetAttachedListener = createMockOnFn();
-      this.removeTargetAttachedListener = fnAny();
-    },
+    on: createMockOnFn(),
+    off: fnAny(),
+
     /** @return {import('../../../gather/driver/target-manager.js')} */
     asTargetManager() {
       // @ts-expect-error - We'll rely on the tests passing to know this matches.
@@ -160,16 +153,18 @@ function createMockDriver() {
   const page = createMockPage();
   const session = createMockSession();
   const context = createMockExecutionContext();
+  const targetManager = createMockTargetManager(session);
 
   return {
     _page: page,
     _executionContext: context,
     _session: session,
-    url: jest.fn(() => page.url()),
+    url: jestMock.fn(() => page.url()),
     defaultSession: session,
     connect: fnAny(),
     disconnect: fnAny(),
     executionContext: context.asExecutionContext(),
+    targetManager: targetManager.asTargetManager(),
 
     /** @return {Driver} */
     asDriver() {
@@ -179,24 +174,20 @@ function createMockDriver() {
   };
 }
 
-function mockRunnerModule() {
-  const runnerModule = {
-    getAuditList: fnAny().mockReturnValue([]),
-    getGathererList: fnAny().mockReturnValue([]),
-    audit: fnAny(),
-    gather: fnAny(),
-    reset,
-  };
-
-  jest.mock(`${LH_ROOT}/lighthouse-core/runner.js`, () => runnerModule);
-
-  function reset() {
+const runnerModule = {
+  getAuditList: fnAny().mockReturnValue([]),
+  getGathererList: fnAny().mockReturnValue([]),
+  audit: fnAny(),
+  gather: fnAny(),
+  reset() {
     runnerModule.getGathererList.mockReturnValue([]);
     runnerModule.getAuditList.mockReturnValue([]);
     runnerModule.audit.mockReset();
     runnerModule.gather.mockReset();
-  }
-
+  },
+};
+function mockRunnerModule() {
+  td.replace(`${LH_ROOT}/lighthouse-core/runner.js`, runnerModule);
   return runnerModule;
 }
 
@@ -230,20 +221,6 @@ function createMockBaseArtifacts() {
     HostUserAgent: 'Chrome/93.0.1449.0',
     GatherContext: {gatherMode: 'navigation'},
   };
-}
-
-function mockTargetManagerModule() {
-  const targetManagerMock = createMockTargetManager();
-
-  /** @type {(instance: any) => (...args: any[]) => any} */
-  const proxyCtor = instance => function() {
-    // IMPORTANT! This must be a `function` not an arrow function so it can be invoked as a constructor.
-    return instance;
-  };
-
-  jest.mock('../../../gather/driver/target-manager.js', () => proxyCtor(targetManagerMock));
-
-  return targetManagerMock;
 }
 
 function createMockContext() {
@@ -286,7 +263,6 @@ function mockDriverSubmodules() {
   const networkMock = {
     fetchResponseBodyFromCache: fnAny(),
   };
-  const targetManagerMock = mockTargetManagerModule();
 
   function reset() {
     navigationMock.gotoURL = fnAny().mockResolvedValue({finalUrl: 'https://example.com', warnings: [], timedOut: false});
@@ -298,7 +274,6 @@ function mockDriverSubmodules() {
     emulationMock.clearThrottling = fnAny();
     emulationMock.emulate = fnAny();
     networkMock.fetchResponseBodyFromCache = fnAny().mockResolvedValue('');
-    targetManagerMock.reset();
   }
 
   /**
@@ -311,11 +286,11 @@ function mockDriverSubmodules() {
     return (...args) => target[name](...args);
   };
 
-  jest.mock('../../../gather/driver/navigation.js', () => new Proxy(navigationMock, {get}));
-  jest.mock('../../../gather/driver/prepare.js', () => new Proxy(prepareMock, {get}));
-  jest.mock('../../../gather/driver/storage.js', () => new Proxy(storageMock, {get}));
-  jest.mock('../../../gather/driver/network.js', () => new Proxy(networkMock, {get}));
-  jest.mock('../../../lib/emulation.js', () => new Proxy(emulationMock, {get}));
+  td.replace('../../../gather/driver/navigation.js', new Proxy(navigationMock, {get}));
+  td.replace('../../../gather/driver/prepare.js', new Proxy(prepareMock, {get}));
+  td.replace('../../../gather/driver/storage.js', new Proxy(storageMock, {get}));
+  td.replace('../../../gather/driver/network.js', new Proxy(networkMock, {get}));
+  td.replace('../../../lib/emulation.js', new Proxy(emulationMock, {get}));
 
   reset();
 
@@ -325,14 +300,12 @@ function mockDriverSubmodules() {
     storageMock,
     emulationMock,
     networkMock,
-    targetManagerMock,
     reset,
   };
 }
 
 export {
   mockRunnerModule,
-  mockTargetManagerModule,
   mockDriverModule,
   mockDriverSubmodules,
   createMockDriver,

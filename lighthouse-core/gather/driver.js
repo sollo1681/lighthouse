@@ -7,7 +7,7 @@
 
 const Fetcher = require('./fetcher.js');
 const ExecutionContext = require('./driver/execution-context.js');
-const LHError = require('../lib/lh-error.js');
+const LighthouseError = require('../lib/lh-error.js');
 const {fetchResponseBodyFromCache} = require('../gather/driver/network.js');
 const EventEmitter = require('events').EventEmitter;
 
@@ -96,6 +96,30 @@ class Driver {
     this.evaluate = this.executionContext.evaluate.bind(this.executionContext);
     /** @private @deprecated Only available for plugin backcompat. */
     this.evaluateAsync = this.executionContext.evaluateAsync.bind(this.executionContext);
+
+    // A shim for sufficient coverage of targetManager functionality. Exposes the target
+    // management that legacy driver already handles (see this._handleTargetAttached).
+    this.targetManager = {
+      rootSession: () => {
+        return this.defaultSession;
+      },
+      /**
+       * Bind to *any* protocol event.
+       * @param {'protocolevent'} event
+       * @param {(payload: LH.Protocol.RawEventMessage) => void} callback
+       */
+      on: (event, callback) => {
+        this._connection.on('protocolevent', callback);
+      },
+      /**
+       * Unbind to *any* protocol event.
+       * @param {'protocolevent'} event
+       * @param {(payload: LH.Protocol.RawEventMessage) => void} callback
+       */
+      off: (event, callback) => {
+        this._connection.off('protocolevent', callback);
+      },
+    };
   }
 
   /** @deprecated - Not available on Fraggle Rock driver. */
@@ -185,22 +209,6 @@ class Driver {
     }
 
     this._eventEmitter.removeListener(eventName, cb);
-  }
-
-  /**
-   * Bind to *any* protocol event.
-   * @param {(payload: LH.Protocol.RawEventMessage) => void} callback
-   */
-  addProtocolMessageListener(callback) {
-    this._connection.on('protocolevent', callback);
-  }
-
-  /**
-   * Unbind to *any* protocol event.
-   * @param {(payload: LH.Protocol.RawEventMessage) => void} callback
-   */
-  removeProtocolMessageListener(callback) {
-    this._connection.off('protocolevent', callback);
   }
 
   /** @param {LH.Crdp.Target.TargetInfo} targetInfo */
@@ -335,7 +343,8 @@ class Driver {
     let asyncTimeout;
     const timeoutPromise = new Promise((resolve, reject) => {
       if (timeout === Infinity) return;
-      asyncTimeout = setTimeout(reject, timeout, new LHError(LHError.errors.PROTOCOL_TIMEOUT, {
+      // eslint-disable-next-line max-len
+      asyncTimeout = setTimeout(reject, timeout, new LighthouseError(LighthouseError.errors.PROTOCOL_TIMEOUT, {
         protocolMethod: method,
       }));
     });

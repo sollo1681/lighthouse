@@ -11,8 +11,7 @@ import CpuNode from '../../../../lib/dependency-graph/cpu-node.js';
 import Simulator from '../../../../lib/dependency-graph/simulator/simulator.js';
 import DNSCache from '../../../../lib/dependency-graph/simulator/dns-cache.js';
 import PageDependencyGraph from '../../../../computed/page-dependency-graph.js';
-import {getURLArtifactFromDevtoolsLog} from '../../../test-utils.js';
-import {readJson} from '../../../../../root.js';
+import {getURLArtifactFromDevtoolsLog, readJson} from '../../../test-utils.js';
 
 const pwaTrace = readJson('../../../fixtures/traces/progressive-app-m60.json', import.meta);
 const pwaDevtoolsLog = readJson('../../../fixtures/traces/progressive-app-m60.devtools.log.json', import.meta);
@@ -44,12 +43,12 @@ describe('DependencyGraph/Simulator', () => {
   // Insulate the simulator tests from DNS multiplier changes
   let originalDNSMultiplier;
 
-  beforeAll(() => {
+  before(() => {
     originalDNSMultiplier = DNSCache.RTT_MULTIPLIER;
     DNSCache.RTT_MULTIPLIER = 1;
   });
 
-  afterAll(() => {
+  after(() => {
     DNSCache.RTT_MULTIPLIER = originalDNSMultiplier;
   });
 
